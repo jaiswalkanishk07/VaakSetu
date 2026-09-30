@@ -1,7 +1,7 @@
 import operator
 import logging
 from typing import Annotated, TypedDict, Dict, Any, List
-from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 import asyncio
@@ -32,12 +32,8 @@ class ConversationalGraphAgent:
     Addresses limitations of single-pass summarisation by keeping active context.
     """
     def __init__(self):
-        self._llm = ChatOpenAI(
-            model=SARVAM_CHAT_MODEL,
-            temperature=SARVAM_CHAT_TEMPERATURE,
-            api_key=SARVAM_API_KEY,
-            base_url=SARVAM_CHAT_BASE_URL,
-        )
+        from task1_ai_core.llm_factory import LLMFactory
+        self._llm = LLMFactory.get_robust_langchain_llm(temperature=0.7)
         self.graph = self._build_graph()
 
     def _build_graph(self):

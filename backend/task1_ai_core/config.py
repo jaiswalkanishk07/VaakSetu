@@ -30,10 +30,10 @@ HF_TOKEN: str = os.getenv("HF_TOKEN", "")
 SARVAM_CHAT_TEMPERATURE: float = 0.7
 SARVAM_CHAT_MAX_TOKENS: int = 256
 
-# ── OpenAI / GitHub Models (LLM Judge for Reward Engine) ───────
-OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://models.inference.ai.azure.com")
-LLM_JUDGE_MODEL: str = os.getenv("MODEL_NAME", "gpt-4o")
+# ── Gemini (Multi-Key Setup) ───────────────────────────────────
+_gemini_keys = os.getenv("GEMINI_API_KEYS", "")
+GEMINI_API_KEYS: list[str] = [k.strip() for k in _gemini_keys.split(",") if k.strip()]
+LLM_MODEL_NAME: str = "gemini-2.0-flash"  # Highly stable, better free-tier limits
 
 # ── Redis (Conversation Memory) ────────────────────────────────
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -59,8 +59,8 @@ def validate_config() -> list[str]:
     warnings = []
     if not SARVAM_API_KEY:
         warnings.append("⚠ SARVAM_API_KEY not set — ASR and Chat will fail. Set it in .env")
-    if not OPENAI_API_KEY:
-        warnings.append("⚠ OPENAI_API_KEY not set — LLM Judge scoring will fail. Set it in .env")
+    if not GEMINI_API_KEYS:
+        warnings.append("⚠ GEMINI_API_KEYS not set — LangGraph and LLM Judge scoring will fail. Set it in .env")
     if not REDIS_URL:
         warnings.append("⚠ REDIS_URL not set — Dialogue Agent memory will fail. Set it in .env")
     return warnings
@@ -71,10 +71,10 @@ if __name__ == "__main__":
     print(f"Project Root : {PROJECT_ROOT}")
     print(f"Configs Dir  : {CONFIGS_DIR}")
     print(f"Sarvam Key   : {'✅ set' if SARVAM_API_KEY else '❌ missing'}")
-    print(f"OpenAI Key   : {'✅ set' if OPENAI_API_KEY else '❌ missing'}")
+    print(f"Gemini Keys  : {'✅ set' if GEMINI_API_KEYS else '❌ missing'} ({len(GEMINI_API_KEYS)} keys)")
     print(f"Redis URL    : {REDIS_URL}")
     print(f"Chat Model   : {SARVAM_CHAT_MODEL}")
-    print(f"Judge Model  : {LLM_JUDGE_MODEL}")
+    print(f"Gemini Model : {LLM_MODEL_NAME}")
 
     issues = validate_config()
     if issues:

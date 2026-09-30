@@ -28,9 +28,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from task1_ai_core.config import (
-    OPENAI_API_KEY,
-    OPENAI_BASE_URL,
-    LLM_JUDGE_MODEL,
     REWARD_LLM_WEIGHT,
     REWARD_PROGRAMMATIC_WEIGHT,
     DPO_THRESHOLD,
@@ -95,7 +92,7 @@ class RewardEngine:
     """
 
     def __init__(self):
-        self._openai_client = None
+        pass
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -224,13 +221,7 @@ class RewardEngine:
         Score conversation using GPT-4o as an LLM judge.
         Returns structured scores per quality dimension.
         """
-        import openai
-
-        if self._openai_client is None:
-            self._openai_client = openai.OpenAI(
-                api_key=OPENAI_API_KEY,
-                base_url=OPENAI_BASE_URL,
-            )
+        from task1_ai_core.llm_factory import LLMFactory
 
         # Format conversation for the judge
         conv_text = self._format_conversation_for_judge(conversation)
@@ -266,18 +257,8 @@ Respond with ONLY valid JSON in this exact format:
 }}"""
 
         try:
-            response = await asyncio.to_thread(
-                self._openai_client.chat.completions.create,
-                model=LLM_JUDGE_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a strict but fair conversation quality judge. Respond ONLY with valid JSON."},
-                    {"role": "user", "content": judge_prompt},
-                ],
-                temperature=0.1,  # Low temp for consistent scoring
-                max_tokens=300,
-            )
-
-            content = response.choices[0].message.content.strip()
+            content = await LLMFactory.invoke_raw_gemini(judge_prompt, json_mode=True)
+            content = content.strip()
 
             # Parse JSON from response (handle markdown code blocks)
             if "```" in content:

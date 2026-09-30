@@ -92,15 +92,9 @@ class SmartDialogueAgent:
 
     def _get_llm(self):
         """Lazy-initialize the LangChain ChatOpenAI pointed at Sarvam."""
-        if self._llm is None:
-            from langchain_openai import ChatOpenAI
-            self._llm = ChatOpenAI(
-                model=SARVAM_CHAT_MODEL,
-                temperature=SARVAM_CHAT_TEMPERATURE,
-                max_tokens=1024,  # Sarvam-M uses reasoning tokens, needs headroom
-                api_key=SARVAM_API_KEY,
-                base_url=SARVAM_CHAT_BASE_URL,
-            )
+        if getattr(self, "_llm", None) is None:
+            from task1_ai_core.llm_factory import LLMFactory
+            self._llm = LLMFactory.get_robust_langchain_llm(temperature=SARVAM_CHAT_TEMPERATURE)
             logger.info(f"LLM initialized: {SARVAM_CHAT_MODEL} @ {SARVAM_CHAT_BASE_URL}")
         return self._llm
 
@@ -120,7 +114,7 @@ class SmartDialogueAgent:
 
         if not greeting:
             name = agent_config.get("name", "Assistant")
-            greeting = f"Namaste! Main {name} hoon. Aapki kaise madad kar sakta hoon?"
+            greeting = f"Namaste! Main {name} hoon. Aapki kaise madad kar sakta hoon? Pehle, kya aap apna naam bata sakte hain?"
 
         # Initialize session state
         self._session_state[session_id] = {
@@ -268,6 +262,7 @@ class SmartDialogueAgent:
    - Talk exactly like a LIVE, dynamic, and empathetic human person speaking on a voice call. Use a highly conversational and natural tone. DO NOT sound robotic.
 
 2. ASKING FOR INFORMATION:
+   - Always address the user by their name frequently once it has been collected, to make the conversation feel very personal and human.
    - If you need the user to provide missing information or need anything to do your task, ASK FOR IT naturally embedded in your conversation.
    - Ask ONE question at a time. Keep responses to 1-2 short sentences so it's easy to hear.
    - If the user provides multiple pieces of information at once, acknowledge them before moving on.

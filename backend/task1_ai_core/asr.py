@@ -197,7 +197,7 @@ class ASRPipeline:
             device = 0 if torch.cuda.is_available() else -1
             self._indicwhisper_pipe = hf_pipeline(
                 "automatic-speech-recognition",
-                model="ai4bharat/indicwhisper-hindi",
+                model="openai/whisper-tiny",
                 device=device,
                 chunk_length_s=30,
                 token=HF_TOKEN,

@@ -16,7 +16,7 @@ from task1_ai_core.config import SARVAM_API_KEY
 
 logger = logging.getLogger("vaaksetu.tts")
 
-DEFAULT_VOICE    = "hitesh"
+DEFAULT_VOICE    = "kavya"
 DEFAULT_LANGUAGE = None  # Initially None; detected dynamically on first pass
 
 class TTSPipeline:
@@ -45,65 +45,63 @@ class TTSPipeline:
         text = text.strip()[:500]
 
         # ── Language Detection ──────────────────────────────────────────────
-        global DEFAULT_LANGUAGE
+        # ── Language Detection ──────────────────────────────────────────────
         try:
-            detected_lang_code = None
+            detected_native = None
 
             # 1. Native Character Precedence
-            # If the LLM generates a bilingual sentence (e.g., Tamil + English), 
-            # English TTS ('en-IN') will completely SKIP the Tamil characters.
-            # However, regional TTS ('ta-IN') can perfectly read BOTH Tamil AND English.
-            if any('\u0B80' <= c <= '\u0BFF' for c in text): detected_lang_code = 'ta-IN'
-            elif any('\u0900' <= c <= '\u097F' for c in text): detected_lang_code = 'hi-IN'
-            elif any('\u0C00' <= c <= '\u0C7F' for c in text): detected_lang_code = 'te-IN'
-            elif any('\u0980' <= c <= '\u09FF' for c in text): detected_lang_code = 'bn-IN'
-            elif any('\u0C80' <= c <= '\u0CFF' for c in text): detected_lang_code = 'kn-IN'
-            elif any('\u0D00' <= c <= '\u0D7F' for c in text): detected_lang_code = 'ml-IN'
-            elif any('\u0A80' <= c <= '\u0AFF' for c in text): detected_lang_code = 'gu-IN'
-            elif any('\u0B00' <= c <= '\u0B7F' for c in text): detected_lang_code = 'od-IN'
-            elif any('\u0A00' <= c <= '\u0A7F' for c in text): detected_lang_code = 'pa-IN'
+            # Native scripts MUST override the config to prevent silent audio drops
+            if any('\u0B80' <= c <= '\u0BFF' for c in text): detected_native = 'ta-IN'
+            elif any('\u0900' <= c <= '\u097F' for c in text): detected_native = 'hi-IN'
+            elif any('\u0C00' <= c <= '\u0C7F' for c in text): detected_native = 'te-IN'
+            elif any('\u0980' <= c <= '\u09FF' for c in text): detected_native = 'bn-IN'
+            elif any('\u0C80' <= c <= '\u0CFF' for c in text): detected_native = 'kn-IN'
+            elif any('\u0D00' <= c <= '\u0D7F' for c in text): detected_native = 'ml-IN'
+            elif any('\u0A80' <= c <= '\u0AFF' for c in text): detected_native = 'gu-IN'
+            elif any('\u0B00' <= c <= '\u0B7F' for c in text): detected_native = 'od-IN'
+            elif any('\u0A00' <= c <= '\u0A7F' for c in text): detected_native = 'pa-IN'
 
-            if detected_lang_code:
-                logger.info(f"Native script detected: enforcing TTS language {detected_lang_code}")
-                if detected_lang_code != DEFAULT_LANGUAGE:
-                    DEFAULT_LANGUAGE = detected_lang_code
-                language_code = detected_lang_code
+            if detected_native:
+                logger.info(f"Native script detected: enforcing TTS language {detected_native}")
+                language_code = detected_native
             else:
-                # 2. Latin Script Fallback (English / Hinglish / Tanglish)
-                from langdetect import detect
+                # 2. Dynamic Language Switching (English <-> Hinglish)
+                # If the user switches languages, the LLM responds in that language.
+                # We dynamically update the TTS language to match the text.
+                text_lower = text.lower().replace(',','').replace('?','').replace('.','').replace('!','')
+                words = set(text_lower.split())
                 
-                # Simple heuristic for Romanized Hindi (Hinglish)
-                hinglish_words = {'hai','hain','ki','ko','se','aur','mein','ka','ke','kya','aap','nahi','yeh','woh','karo','kar','raha','rahi','hoon','hu','mera','tum','tumhara','kaise','bukhar','kripya','bataiye','madad'}
-                words = set(text.lower().replace(',','').replace('?','').replace('.','').split())
-                if len(words.intersection(hinglish_words)) >= 2:
-                    detected_iso = 'hi'
-                else:
-                    detected_iso = detect(text)
-                
-                lang_map = {
-                    'hi': 'hi-IN', 'en': 'en-IN', 'bn': 'bn-IN', 'kn': 'kn-IN',
-                    'ml': 'ml-IN', 'mr': 'mr-IN', 'pa': 'pa-IN', 'ta': 'ta-IN',
-                    'te': 'te-IN', 'gu': 'gu-IN', 'or': 'od-IN',
-                    'id': 'hi-IN', 'so': 'hi-IN', 'tl': 'hi-IN', 'fi': 'en-IN',
+                # Robust Hinglish dictionary
+                hinglish_words = {
+                    'hai','hain','ki','ko','se','aur','mein','ka','ke','kya','aap','nahi','yeh',
+                    'woh','karo','kar','raha','rahi','hoon','hu','mera','tum','tumhara','kaise',
+                    'bukhar','kripya','bataiye','madad', 'namaste', 'acha', 'ha', 'haan', 'ji',
+                    'thik', 'theek', 'karna', 'kijiye', 'saal', 'umar', 'naam', 'bhi', 'par', 'main'
                 }
                 
-                if detected_iso in lang_map:
-                    new_lang = lang_map[detected_iso]
-                    if new_lang != DEFAULT_LANGUAGE:
-                        logger.info(f"Language auto-detected: {detected_iso} -> changing DEFAULT_LANGUAGE from {DEFAULT_LANGUAGE} to {new_lang}")
-                        DEFAULT_LANGUAGE = new_lang
-                    language_code = new_lang
-                else:
-                    logger.info(f"Language '{detected_iso}' not in map. Using DEFAULT_LANGUAGE: {DEFAULT_LANGUAGE}")
-                    language_code = DEFAULT_LANGUAGE or "en-IN"
+                # Check for strong English indicators
+                english_words = {
+                    'the', 'is', 'are', 'you', 'your', 'what', 'how', 'can', 'please', 'help',
+                    'name', 'age', 'fever', 'yes', 'no', 'thank', 'thanks', 'we', 'will'
+                }
                 
-        except Exception as e:
-            logger.warning(f"Language detection failed. Defaulting to {DEFAULT_LANGUAGE}. Error: {e}")
-            language_code = DEFAULT_LANGUAGE or "en-IN"
+                hinglish_count = len(words.intersection(hinglish_words))
+                english_count = len(words.intersection(english_words))
 
-        # If it was originally passed as None (from default arg) and detection completely failed
-        if not language_code:
-            language_code = "en-IN"
+                # Dynamically switch between hi-IN and en-IN based on word dominance
+                if hinglish_count >= 2 and hinglish_count > english_count:
+                    logger.info("Dynamic switch: Detected Hinglish -> changing to hi-IN")
+                    language_code = "hi-IN"
+                elif english_count >= 2 and english_count > hinglish_count:
+                    logger.info("Dynamic switch: Detected English -> changing to en-IN")
+                    language_code = "en-IN"
+                elif not language_code:
+                    language_code = "hi-IN"
+                    
+        except Exception as e:
+            logger.warning(f"Language detection failed. Error: {e}")
+            if not language_code:
+                language_code = "hi-IN"
 
         logger.info(f"TTS synthesising {len(text)} chars in {language_code} (speaker={speaker})")
 
@@ -125,7 +123,7 @@ class TTSPipeline:
             text=text,
             target_language_code=language_code,
             speaker=speaker,
-            model="bulbul:v2",
+            model="bulbul:v3",  # Upgraded to v3 which restores the 'kavya' speaker
             enable_preprocessing=True,
         )
 

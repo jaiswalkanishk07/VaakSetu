@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize database
     await init_db()
-    logger.info("✓ Database initialized (SQLite)")
+    logger.info("✓ Database initialized (Firebase Firestore)")
 
     # Load domain configs for legacy support
     try:

@@ -40,15 +40,9 @@ class SmartExtractor:
 
     def _get_llm(self):
         """Lazy-initialize the LLM for extraction."""
-        if self._llm is None:
-            from langchain_openai import ChatOpenAI
-            self._llm = ChatOpenAI(
-                model=SARVAM_CHAT_MODEL,
-                temperature=0.1,  # Low temp for consistent extraction
-                max_tokens=1024,  # Sarvam-M uses reasoning tokens
-                api_key=SARVAM_API_KEY,
-                base_url=SARVAM_CHAT_BASE_URL,
-            )
+        if getattr(self, "_llm", None) is None:
+            from task1_ai_core.llm_factory import LLMFactory
+            self._llm = LLMFactory.get_robust_langchain_llm(temperature=0.0)
         return self._llm
 
     async def extract_fields(

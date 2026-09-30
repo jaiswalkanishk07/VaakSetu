@@ -78,12 +78,22 @@ export default function AgentWizard({ onClose, onSave, initialData }) {
 
   const handleFinish = async () => {
     setLoading(true);
+    
+    // Fallback for required fields to prevent 422 errors
+    const finalData = { ...formData };
+    if (!finalData.name || !finalData.name.trim()) {
+      finalData.name = "Untitled Agent";
+    }
+    if (!finalData.domain || !finalData.domain.trim()) {
+      finalData.domain = "Others";
+    }
+
     // Brief delay for loading animation
     await new Promise(r => setTimeout(r, 800));
     setLoading(false);
     setSuccess(true);
     setTimeout(() => {
-      onSave(formData);
+      onSave(finalData);
     }, 1500);
   };
 

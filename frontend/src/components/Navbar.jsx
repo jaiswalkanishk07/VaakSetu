@@ -11,6 +11,7 @@ const navLinks = [
   { name: "Intelligence", href: "/healthcare" },
   { name: "Finance", href: "/banking" },
   { name: "Platform", href: "/platform" },
+  { name: "AI Calling", href: "/call" },
 ];
 
 export default function Navbar() {

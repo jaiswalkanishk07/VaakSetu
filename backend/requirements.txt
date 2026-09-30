@@ -24,7 +24,8 @@ sentence-transformers
 sarvamai
 
 # LangChain + LangGraph (Conversation Agent Framework)
-langchain-openai
+langchain-google-genai
+google-generativeai
 langchain-core
 langgraph
 langgraph-checkpoint-redis
@@ -72,3 +73,7 @@ flask>=3.0.0
 
 # Simulation - Terminal UI
 colorama>=0.4.6
+
+# Firebase
+firebase-admin
+langdetect
