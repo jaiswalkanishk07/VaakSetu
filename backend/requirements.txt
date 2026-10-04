@@ -32,6 +32,7 @@ langgraph-checkpoint-redis
 
 # Audio Processing
 pydub
+audioop-lts  # Required for Python 3.13+
 
 # NLP
 spacy

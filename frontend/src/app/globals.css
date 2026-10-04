@@ -109,3 +109,31 @@
 .animate-reveal-up {
   animation: reveal-up 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Auto-Hiding Scrollbar — completely invisible by default, no gutter reserved */
+
+/* Step 1: Fully hide scrollbar (no gutter, no track, no bar) */
+html {
+  scrollbar-width: none; /* Firefox */
+}
+::-webkit-scrollbar {
+  display: none; /* Chrome/Edge/Safari */
+}
+
+/* Step 2: When html.is-scrolling (toggled by ScrollbarManager.jsx),
+   re-enable a slim saffron scrollbar that overlays content */
+html.is-scrolling {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(249, 115, 22, 0.5) transparent;
+}
+html.is-scrolling::-webkit-scrollbar {
+  display: block;
+  width: 5px;
+}
+html.is-scrolling::-webkit-scrollbar-track {
+  background: transparent;
+}
+html.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(249, 115, 22, 0.45);
+  border-radius: 99px;
+}

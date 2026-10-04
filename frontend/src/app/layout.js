@@ -1,6 +1,7 @@
 import { Instrument_Sans, DM_Serif_Display } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import CultureBackground from "@/components/CultureBackground";
+import ScrollbarManager from "@/components/ScrollbarManager";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -25,6 +26,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${instrumentSans.variable} ${dmSerif.variable} antialiased min-h-screen`}>
         <ThemeProvider>
+          <ScrollbarManager />
           <CultureBackground />
           {children}
         </ThemeProvider>

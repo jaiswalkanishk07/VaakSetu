@@ -23,17 +23,21 @@ class StreamConversationProcessor:
                 "transcript_history": [],
                 "speaker_map": {},
                 "narrative": "",
-                "structured_data": {}
+                "structured_data": {},
+                "video_frames": []
             })
         return self._session_store[session_id]
 
-    async def ingest_chunk(self, session_id: str, domain: str, text_chunk: str) -> dict:
+    async def ingest_chunk(self, session_id: str, domain: str, text_chunk: str, frame_altered: bool = False, video_frames: list = None) -> dict:
         """
         Takes a new transcript chunk string, runs it through the graph agent, 
         and updates the central state.
         
         Returns a dict of updates for the websocket to push to the client.
         """
+        if video_frames is None:
+            video_frames = []
+            
         state = self.get_session_state(session_id, domain)
         if not text_chunk.strip():
             logger.warning(f"Empty chunk received for session {session_id}")
@@ -41,9 +45,13 @@ class StreamConversationProcessor:
 
         # Push to transcript history (simulated queue)
         state["transcript_history"].append(text_chunk)
+        # Set frame alteration flag
+        state["frame_altered"] = frame_altered
+        # Set video frames for multimodal grounding
+        state["video_frames"] = video_frames
         
         # Process the turn through the graph
-        logger.info(f"Processing turn for session {session_id} - Graph nodes invoking...")
+        logger.info(f"Processing turn for session {session_id} - Graph nodes invoking (frame_altered={frame_altered})...")
         try:
             new_state = await self.agent.process_turn(state)
             self._session_store[session_id] = new_state
@@ -121,7 +129,12 @@ class ConversationProcessor:
                 "transcript_history": [full_transcript],
                 "speaker_map": {},
                 "narrative": "",
-                "structured_data": {}
+                "structured_data": {},
+                # Theme 5 required fields
+                "video_frames": [],
+                "frame_altered": False,
+                "last_fast_path_ms": None,
+                "last_slow_path_ms": None,
             }
             
             new_state = await self.graph_agent.process_turn(state)

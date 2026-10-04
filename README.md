@@ -19,39 +19,34 @@
 
 <br/>
 
-> **VaakSetu** is an autonomous voice AI stack that can observe or run multilingual call flows, understand Indian code-mixed speech in real time, and generate structured records with human-readable summaries for healthcare and financial operations.
+> **VaakSetu** is an autonomous voice AI stack that implements a dual-process architecture to handle real-time, interruptible, code-mixed Indian speech. It runs conversational perception and structured reasoning on a unified, concurrent timeline.
 
 </div>
 
 ---
 
-## 🚀 The Problem
+## 🚀 Theme 5: Interruptible Real-Time Agents
 
-India runs on voice. But documentation still runs on manual entry. 
+Standard AI operates in half-duplex (listen, think, speak), which fails when users interrupt, correct themselves, or re-plan mid-sentence. 
 
-**VaakSetu reduces manual burden with real-time extraction + structured storage.**
+**VaakSetu solves the concurrency challenge of real-time voice using a Fast-and-Slow Execution Pipeline.**
 
-| 📉 Pain Point | 🚨 Operational Impact |
+| 🛑 The Bottleneck | ⚡ The VaakSetu Solution (Theme 5) |
 |---|---|
-| ASHA / field workflows require manual call notes | High overhead, delayed reporting |
-| Clinical and support teams spend time on post-call paperwork | Reduced service throughput |
-| Code-mixed inputs (Hinglish/Kanglish) break rigid bots | Lost context and poor extraction |
-| Loan collection / follow-up calls lack structured records | Compliance and audit friction |
+| Latency blocks concurrent reasoning | **Fast Path:** Emits sub-100ms acknowledgments and fillers |
+| Data extraction blocks conversation | **Slow Path:** Asynchronous tool execution and structured state extraction |
+| Interruptions cause stale API calls | **Coordination:** Cancels superseded in-flight tool calls instantly |
+| Turn-taking causes context loss | **State Snapshots:** Continually emits well-formed JSON payloads containing intent & slots |
 
 ---
 
-## ✨ What VaakSetu Does
+## ✨ Core Theme 5 Capabilities
 
-VaakSetu acts as a conversational intelligence layer for live calls and session workflows. 
-
-- 🎙️ **Listens / transcribes** multilingual and code-mixed speech with advanced ASR.
-- 👥 **Tracks roles and context** across turns for agent-quality interactions.
-- 🧠 **Runs configurable dialogue agents** using dynamic agent templates.
-- 📋 **Auto-collects structured fields** per domain (healthcare / financial).
-- ✍️ **Generates readable summaries** and logs conversation history.
-- 📞 **Supports Twilio call paths** for outbound and media-stream integration.
-- 🔄 **Switches domain behavior by config** dynamically.
-- 🤖 **Scores completed sessions** with programmatic + LLM-judge reward signals.
+- ⚡ **Dual-Process Concurrency** — Uses `asyncio.gather()` to run floor management and LLM extraction in parallel.
+- 🔄 **Interruption Recovery** — Re-plans conversational state cleanly when the user hesitates or self-repairs.
+- 🧠 **Dynamic State Snapshots** — Emits structured JSON state payloads asynchronously without blocking the fast path.
+- 📋 **Schema-Driven Tools** — Parses dynamic definitions for Healthcare and Finance domains with zero duplicate state-changing calls.
+- 🤖 **RLAIF Evaluation** — Post-session scoring using a Gemini LLM-judge for Task Completion and Protocol Compliance.
 
 ---
 

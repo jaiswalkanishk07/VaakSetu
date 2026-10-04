@@ -335,24 +335,46 @@ async def live_mic_stream(websocket: WebSocket):
                     "chunk_index": chunk_index,
                 }))
 
-                # Feed into LangGraph agent (non-blocking)
-                try:
-                    processor = _get_processor()
-                    result = await processor.ingest_chunk(session_id, session["domain"], text)
+                # Feed into LangGraph agent (non-blocking with Interruption Recovery)
+                # Theme 5: Cancel superseded in-flight tool calls instantly
+                is_interrupted = False
+                if "active_agent_task" in session and not session["active_agent_task"].done():
+                    logger.info(f"[{session_id}] Interruption detected! Cancelling stale in-flight extraction.")
+                    session["active_agent_task"].cancel()
+                    is_interrupted = True
 
-                    if result.get("status") == "success":
-                        session["narrative"] = result.get("narrative", "")
-                        session["structured_data"] = result.get("structured_data", {})
-                        session["speaker_map"] = result.get("speaker_map", {})
+                async def _run_agent_update(current_text, current_index, frame_altered):
+                    try:
+                        processor = _get_processor()
+                        # Extract the latest video frames (if any) for multimodal grounding
+                        current_frames = session.get("video_frames", [])
+                        result = await processor.ingest_chunk(
+                            session_id, 
+                            session["domain"], 
+                            current_text, 
+                            frame_altered=frame_altered,
+                            video_frames=current_frames
+                        )
 
-                        await websocket.send_text(json.dumps({
-                            "type": "agent_update",
-                            "narrative": session["narrative"],
-                            "structured_data": session["structured_data"],
-                            "speaker_map": session["speaker_map"],
-                        }))
-                except Exception as e:
-                    logger.error(f"[{session_id}] Agent error: {e}", exc_info=True)
+                        if result.get("status") == "success":
+                            session["narrative"] = result.get("narrative", "")
+                            session["structured_data"] = result.get("structured_data", {})
+                            session["speaker_map"] = result.get("speaker_map", {})
+
+                            await websocket.send_text(json.dumps({
+                                "type": "agent_update",
+                                "narrative": session["narrative"],
+                                "structured_data": session["structured_data"],
+                                "speaker_map": session["speaker_map"],
+                                "cancelled_stale": True
+                            }))
+                    except asyncio.CancelledError:
+                        # Expected behavior on interruption
+                        logger.info(f"[{session_id}] Task for chunk {current_index} was cleanly cancelled.")
+                    except Exception as e:
+                        logger.error(f"[{session_id}] Agent error: {e}", exc_info=True)
+
+                session["active_agent_task"] = asyncio.create_task(_run_agent_update(text, chunk_index, is_interrupted))
 
             # ── AUDIO CHUNK (optional, for enhanced server-side ASR) ──
             elif msg_type == "audio_chunk":
@@ -384,6 +406,19 @@ async def live_mic_stream(websocket: WebSocket):
                             }))
 
                 asyncio.create_task(_process_audio())
+
+            # ── VIDEO FRAME (Multimodal Grounding) ──────────────────
+            elif msg_type == "video_frame":
+                if not session:
+                    continue
+                frame_b64 = msg.get("data", "")
+                if frame_b64:
+                    # Keep only the last 3 frames to prevent memory bloat
+                    frames = session.setdefault("video_frames", [])
+                    frames.append(frame_b64)
+                    if len(frames) > 3:
+                        frames.pop(0)
+                    logger.debug(f"[{session_id}] Video frame received for multimodal grounding.")
 
             # ── STOP ────────────────────────────────────────────────
             elif msg_type == "stop":

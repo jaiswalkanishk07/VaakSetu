@@ -1,7 +1,6 @@
 import operator
 import logging
-from typing import Annotated, TypedDict, Dict, Any, List
-from langchain_core.messages import SystemMessage, HumanMessage
+from typing import Annotated, TypedDict, Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 import asyncio
@@ -22,9 +21,17 @@ class ConversationState(TypedDict):
     domain: str
     turn_count: int
     transcript_history: Annotated[List[str], operator.add]
-    speaker_map: Dict[str, str]
+    speaker_map: Dict[str, str]           # role map (e.g. {"SPEAKER_00": "Doctor"})
     narrative: str
     structured_data: Dict[str, Any]
+    # Theme 5: Multimodal Grounding
+    video_frames: List[str]
+    # Theme 5: Frame Alteration signal
+    # If True, this turn was triggered by an interruption — skip Slow Path extraction
+    frame_altered: bool
+    # Latency tracking for RLAIF evaluation
+    last_fast_path_ms: Optional[float]
+    last_slow_path_ms: Optional[float]
 
 class ConversationalGraphAgent:
     """
@@ -38,44 +45,75 @@ class ConversationalGraphAgent:
 
     def _build_graph(self):
         builder = StateGraph(ConversationState)
-        
-        # Nodes
+
+        # ── Nodes ────────────────────────────────────────────────
         builder.add_node("ingest", self.node_ingest)
         builder.add_node("classify_roles", self.node_classify_roles)
-        builder.add_node("extract_structured", self.node_extract_structured)
+        # SLOW PATH: Full structured extraction (expensive, ~2-4s)
+        builder.add_node("slow_path_extract", self.node_extract_structured)
+        # FAST PATH: Immediate narrative acknowledgment, no extraction
+        builder.add_node("fast_path_respond", self.node_fast_path_respond)
         builder.add_node("update_narrative", self.node_update_narrative)
-        
-        # Edges
+
+        # ── Edges ────────────────────────────────────────────────
         builder.add_edge(START, "ingest")
+
+        # After ingest: route based on frame_altered signal + role status
         builder.add_conditional_edges(
             "ingest",
             self.route_after_ingest,
             {
                 "classify_roles": "classify_roles",
-                "extract_structured": "extract_structured",
-                "update_narrative": "update_narrative"
+                "slow_path_extract": "slow_path_extract",
+                "fast_path_respond": "fast_path_respond",
             }
         )
-        
-        builder.add_edge("classify_roles", "extract_structured")
-        builder.add_edge("extract_structured", "update_narrative")
+
+        # Slow path: classify → extract → narrative
+        builder.add_edge("classify_roles", "slow_path_extract")
+        builder.add_edge("slow_path_extract", "update_narrative")
+
+        # Fast path: skip extraction entirely, go straight to narrative
+        builder.add_edge("fast_path_respond", "update_narrative")
+
         builder.add_edge("update_narrative", END)
-        
+
         return builder.compile()
 
     def route_after_ingest(self, state: ConversationState) -> str:
-        """Route conditionally based on state parameters."""
+        """
+        Frame Alteration Router (Theme 5 core).
+
+        FAST PATH  → frame_altered=True (user interrupted previous turn)
+                     Skips extraction. Only updates narrative.
+        SLOW PATH  → Normal stable frame, runs full structured extraction.
+        CLASSIFY   → First 5 turns, role classification not yet done.
+        """
+        # Roles not yet established: always classify first regardless of interruption
         if not state.get("speaker_map") and state.get("turn_count", 0) <= 5:
+            logger.info(f"[{state['session_id']}] Routing → classify_roles (roles unresolved)")
             return "classify_roles"
-        # Run extractor periodically
+
+        # Frame Alteration: interrupted turn takes Fast Path
+        if state.get("frame_altered", False):
+            logger.info(f"[{state['session_id']}] Routing → fast_path_respond (FRAME ALTERED — skipping extraction)")
+            return "fast_path_respond"
+
+        # Every 5 stable turns: run full Slow Path extraction
         if state.get("turn_count", 0) % 5 == 0:
-            return "extract_structured"
-        return "update_narrative"
+            logger.info(f"[{state['session_id']}] Routing → slow_path_extract (stable frame, turn {state['turn_count']})")
+            return "slow_path_extract"
+
+        # Default: Fast Path for intermediate stable turns
+        logger.info(f"[{state['session_id']}] Routing → fast_path_respond (interim stable frame)")
+        return "fast_path_respond"
 
     def node_ingest(self, state: ConversationState) -> Dict:
-        """Process incoming transcript chunk."""
-        # The history reduction happens automatically with operator.add in TypedDict
-        # We just increment the turn count here
+        """
+        Ingest node: increment turn count.
+        frame_altered flag is set externally by routes_live_mic.py
+        before calling process_turn — it is NOT cleared here so the router can read it.
+        """
         return {"turn_count": state.get("turn_count", 0) + 1}
 
     def node_classify_roles(self, state: ConversationState) -> Dict:
@@ -104,30 +142,75 @@ class ConversationalGraphAgent:
             logger.error(f"Role classification failed: {e}")
         return {"speaker_map": {}}
 
+    def node_fast_path_respond(self, state: ConversationState) -> Dict:
+        """
+        FAST PATH NODE (Theme 5).
+
+        Does NOT run extraction. Returns immediately so the narrative can be
+        updated with minimal latency. Used for:
+          - Interrupted frames (frame_altered=True)
+          - Intermediate stable turns between extraction cycles
+
+        Resets frame_altered to False so next turn starts clean.
+        """
+        import time
+        start = time.monotonic()
+        logger.info(f"[{state['session_id']}] Fast path executed. Extraction skipped.")
+        elapsed_ms = (time.monotonic() - start) * 1000
+        # Clear interruption flag for next turn
+        return {
+            "frame_altered": False,
+            "last_fast_path_ms": elapsed_ms,
+        }
+
     def node_extract_structured(self, state: ConversationState) -> Dict:
-        """Use Pydantic structured output to safely extract domain values."""
+        """
+        SLOW PATH NODE (Theme 5).
+
+        Full structured Pydantic extraction using the domain schema.
+        Only runs on stable frames every N turns — never on interrupted frames.
+        Resets frame_altered to False after completion.
+        """
+        import time
+        start = time.monotonic()
         domain = state.get("domain", "general")
         schema = domain_manager.get_structured_schema(domain)
-        
+
         # Attach structured output constraint
         llm_with_schema = self._llm.with_structured_output(schema)
-        
+
         prompt = f"""
         Extract relevant {domain} details from this conversation history.
-        Update missing portions.
+        Update missing portions only — preserve existing values.
+        If images are provided, use them to ground and clarify any ambiguity in the dialogue (e.g. if the user says "this part hurts", look at the image to extract the body part).
         Transcript:
         {chr(10).join(state.get("transcript_history", []))}
         """
+        
+        # Theme 5: Multimodal Grounding
+        content_parts = [{"type": "text", "text": prompt}]
+        frames = state.get("video_frames", [])
+        for b64_frame in frames:
+            content_parts.append({
+                "type": "image_url", 
+                "image_url": {"url": f"data:image/jpeg;base64,{b64_frame}"}
+            })
+
         try:
-            extracted = llm_with_schema.invoke([HumanMessage(content=prompt)])
-            # Merge with existing
+            extracted = llm_with_schema.invoke([HumanMessage(content=content_parts)])
             current_data = state.get("structured_data", {})
             new_data = extracted.model_dump(exclude_unset=True, exclude_none=True)
             current_data.update(new_data)
-            return {"structured_data": current_data}
+            elapsed_ms = (time.monotonic() - start) * 1000
+            logger.info(f"[{state['session_id']}] Slow path extraction complete in {elapsed_ms:.0f}ms.")
+            return {
+                "structured_data": current_data,
+                "frame_altered": False,
+                "last_slow_path_ms": elapsed_ms,
+            }
         except Exception as e:
             logger.error(f"Structured extraction failed: {e}")
-            return {}
+            return {"frame_altered": False}
 
     def node_update_narrative(self, state: ConversationState) -> Dict:
         """Incrementally updates the third-person narrative."""
