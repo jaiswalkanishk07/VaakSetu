@@ -31,7 +31,7 @@ ENV/
 .env
 .env.local
 .env.example
-firebase_credentials.json
+backend/firebase_credentials.json
 
 # Local Databases
 *.db
